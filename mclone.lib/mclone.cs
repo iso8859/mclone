@@ -23,6 +23,8 @@ namespace mclone.lib
     }
     public class Collection : MongoObject
     {
+        // You can change destination name
+        public string DestinationName { get; set; }
         // Name of the sequence field, needed to synchronize updated records
         public string SequenceField { get; set; }
         // If true will refresh all records. Usefull when using collection that can be updated with no sequence filed.
@@ -37,6 +39,8 @@ namespace mclone.lib
 
     public class Database : MongoObject
     {
+        // You can change destination name
+        public string DestinationName { get; set; }
         public List<Collection> Collections { get; set; }
         public Collection this[string name] { get => Collections.Find(_ => _.Name == name); }
 
@@ -46,7 +50,7 @@ namespace mclone.lib
             var db = client.GetDatabase(Name);
             foreach (string collectionName in await db.ListCollectionNames().ToListAsync())
             {
-                Collections.Add(new Collection() { Name = collectionName });
+                Collections.Add(new Collection() { Name = collectionName, DestinationName = collectionName });
             }
         }
 
@@ -81,26 +85,28 @@ namespace mclone.lib
                     var bsonf = Builders<BsonDocument>.Filter;
                     bool sequence = !string.IsNullOrEmpty(srcCollection.SequenceField);
                     Dictionary<BsonValue, BsonValue> srcIds = await GetIdsAsync(srcClient.GetDatabase(src.Name).GetCollection<BsonDocument>(srcCollection.Name), srcCollection);
-                    Dictionary<BsonValue, BsonValue> destIds = await GetIdsAsync(dstClient.GetDatabase(src.Name).GetCollection<BsonDocument>(srcCollection.Name), srcCollection);
+                    Dictionary<BsonValue, BsonValue> destIds = await GetIdsAsync(dstClient.GetDatabase(src.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName), srcCollection);
                     HashSet<BsonValue> existingIds = new();
                     // Manage identical ids
                     foreach (BsonValue dest in destIds.Keys)
                     {
-                        if (srcIds.ContainsKey(dest))
+                        if (srcIds.ContainsKey(dest)) // If destination existe remove source from srcIds
                         {
-                            bool sync = sequence;
-                            if (sequence)
-                                sync = !srcIds[dest].Equals(destIds[dest]);
-                            if (!sync)
+                            bool needUpdate = sequence; // except if we have a sequence field (needUpdate == true)
+                            if (needUpdate)
+                                needUpdate = !srcIds[dest].Equals(destIds[dest]); // If values are identical remove (needUpdate == false)
+                            if (!needUpdate)
                             {
-                                existingIds.Add(dest);
-                                srcIds.Remove(dest);
+                                existingIds.Add(dest); // Keep this id for Force flag
+                                srcIds.Remove(dest); // It exists in source and destination, remove it.
                             }
                         }
                     }
-                    if (srcCollection.Verbose && existingIds.Count > 0 && !srcCollection.Force)
-                        Console.WriteLine($"Ignore {existingIds.Count} records in {src.Name}.{srcCollection.Name}");
-                    
+                    // remove destIds that have been found in srcIds
+                    foreach (BsonValue val in existingIds)
+                        destIds.Remove(val);
+
+                    // The record we need to refresh
                     if (srcCollection.Force)
                     {
                         while (existingIds.Count > 0)
@@ -112,7 +118,7 @@ namespace mclone.lib
                                 BsonValue val = existingIds.FirstOrDefault();
                                 batch.Add(val);
                                 existingIds.Remove(val);
-                                destIds.Remove(val);
+                                destIds.Remove(val); // Remove from dest, it has been processed
                                 i--;
                             }
                             DateTime start = DateTime.Now;
@@ -121,12 +127,16 @@ namespace mclone.lib
                                 Console.WriteLine($"Read {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms {src.Name}.{srcCollection.Name}");
                             start = DateTime.Now;
                             foreach (BsonDocument doc in s)
-                                await dstClient.GetDatabase(src.Name).GetCollection<BsonDocument>(srcCollection.Name).ReplaceOneAsync(bsonf.Eq("_id", doc["_id"]), doc);
+                                await dstClient.GetDatabase(src.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName).ReplaceOneAsync(bsonf.Eq("_id", doc["_id"]), doc);
                             if (srcCollection.Verbose)
-                                Console.WriteLine($"Replace {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms {src.Name}.{srcCollection.Name}");
+                                Console.WriteLine($"Replace {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms {src.DestinationName}.{srcCollection.DestinationName}");
                         }
                     }
-                    while (srcIds.Count > 0)
+                    else if (srcCollection.Verbose && existingIds.Count>0)
+                        Console.WriteLine($"Ignore {existingIds.Count} records in {src.Name}.{srcCollection.Name}");
+
+                    // The new records
+                    while (srcIds.Count > 0) // There is some src that does not exists or are different
                     {
                         BsonArray batch = new();
                         int i = srcCollection.BatchSize;
@@ -146,29 +156,30 @@ namespace mclone.lib
                         if (srcCollection.Verbose)
                             Console.WriteLine($"Read {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms {src.Name}.{srcCollection.Name}");
                         start = DateTime.Now;
-                        await dstClient.GetDatabase(src.Name).GetCollection<BsonDocument>(srcCollection.Name).InsertManyAsync(s);
+                        await dstClient.GetDatabase(src.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName).InsertManyAsync(s);
                         if (srcCollection.Verbose)
-                            Console.WriteLine($"Write {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms {src.Name}.{srcCollection.Name}");
+                            Console.WriteLine($"Create {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms {src.DestinationName}.{srcCollection.DestinationName}");
                     }
+
                     // Remaining destIds are to be deleted
-                    if (!srcCollection.OnlyAdd && destIds.Count>0)
+                    if (!srcCollection.OnlyAdd && destIds.Count > 0)
                     {
                         Console.WriteLine($"Delete {destIds.Count} records.");
-                        while (destIds.Count>0)
+                        while (destIds.Count > 0)
                         {
                             BsonArray batch = new();
                             int i = srcCollection.BatchSize;
-                            foreach (var val in srcIds)
+                            foreach (var val in destIds)
                             {
                                 batch.Add(val.Key);
-                                destIds.Remove(val.Key);
                                 i--;
                                 if (i == 0)
                                     break;
                             }
                             foreach (BsonValue val2 in batch)
-                                srcIds.Remove(val2);
-                            await dstClient.GetDatabase(src.Name).GetCollection<BsonDocument>(srcCollection.Name).DeleteManyAsync(bsonf.In("_id", batch));
+                                destIds.Remove(val2);
+
+                            await dstClient.GetDatabase(src.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName).DeleteManyAsync(bsonf.In("_id", batch));
                         }
                     }
                 }
@@ -180,45 +191,43 @@ namespace mclone.lib
 
     public class Server : MongoObject
     {
-        public string Uri { get; set; } = "mongodb://127.0.0.1";
         public List<Database> Databases { get; set; }
         public Database this[string name] { get => Databases.Find(_ => _.Name == name); }
-        public async Task FillDatabasesAsync()
+        public async Task FillDatabasesAsync(string uri)
         {
-            var client = new MongoClient(Uri);
+            var client = new MongoClient(uri);
             Databases = new List<Database>();
             foreach (string dbName in await client.ListDatabaseNames().ToListAsync())
             {
-                var db = new Database() { Name = dbName };
+                var db = new Database() { Name = dbName, DestinationName = dbName };
                 await db.FillCollectionsAsync(client);
                 Databases.Add(db);
             }
         }
+
     }
 
     public class Config : MongoObject
     {
-        public Server Source { get; set; } = new Server() { Name = "source server" };
-        public Server Destination { get; set; } = new Server() { Name = "destination server" };
-        public string ToJsonString() => this.ToJson(new MongoDB.Bson.IO.JsonWriterSettings() { Indent = true });
+        public string SourceUri { get; set; } = "mongodb://127.0.0.1";
+        public string DestinationUri { get; set; } = "mongodb://127.0.0.1";
+        public Server SourceServer { get; set; } = new() { Name = "source server" };
+        public string ToJsonString() => this.ToJson(new() { Indent = true });
         public static Config Parse(string jsonString) => MongoDB.Bson.Serialization.BsonSerializer.Deserialize<Config>(jsonString);
         public async Task FillAsync()
         {
-            if (Source != null)
-                await Source.FillDatabasesAsync();
-            if (Destination != null)
-                await Destination.FillDatabasesAsync();
-            Source["admin"].Include = false;
-            Source["config"].Include = false;
-            Source["local"].Include = false;
+            await SourceServer.FillDatabasesAsync(SourceUri);
+            if (SourceServer["admin"] != null) SourceServer["admin"].Include = false;
+            if (SourceServer["config"] != null) SourceServer["config"].Include = false;
+            if (SourceServer["local"] != null) SourceServer["local"].Include = false;
         }
 
         // Only add missing records
         public async Task SyncAsync()
         {
-            var srcClient = new MongoClient(Source.Uri);
-            var dstClient = new MongoClient(Destination.Uri);
-            foreach (Database srcDb in Source.Databases)
+            var srcClient = new MongoClient(SourceUri);
+            var dstClient = new MongoClient(DestinationUri);
+            foreach (Database srcDb in SourceServer.Databases)
             {
                 if (srcDb.Include)
                 {
