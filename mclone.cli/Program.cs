@@ -7,72 +7,98 @@ namespace mclone
 {
     class Program
     {
-
-        static async Task _Main()
+        static async Task Test()
         {
-
-            IMongoClient client = new MongoClient("mongodb://host:port/");
-            IMongoDatabase database = client.GetDatabase("Chorus");
-            IMongoCollection<BsonDocument> collection = database.GetCollection<BsonDocument>("log");
-
-            // Created with Studio 3T, the IDE for MongoDB - https://studio3t.com/
-
-            BsonDocument filter = new BsonDocument();
-
-            filter.Add("path", "transverses/ajouter/fichier");
-
-            BsonDocument projection = new BsonDocument();
-
-            projection.Add("DT", 1.0);
-
-            var options = new FindOptions<BsonDocument>()
+            lib.Config config = new()
             {
-                Projection = projection
-            };
-
-            using (var cursor = await collection.FindAsync(filter, options))
-            {
-                while (await cursor.MoveNextAsync())
-                {
-                    var batch = cursor.Current;
-                    foreach (BsonDocument document in batch)
-                    {
-                        Console.WriteLine(document.ToJson());
-                    }
-                }
-            }
-        }
-
-        static async Task _Main2(string[] args)
-        {
-            var db = new MongoClient(System.Environment.GetEnvironmentVariable("MONGODB")).GetDatabase("Chorus");
-            foreach (BsonDocument document in await db.GetCollection<BsonDocument>("log")
-                .Find(Builders<BsonDocument>.Filter.Eq("path", "transverses/ajouter/fichier"))
-                .Project(Builders<BsonDocument>.Projection.Include("DT"))
-                .ToListAsync()
-                )
-            {
-                Console.WriteLine(document.ToJson());
-            }
-        }
-        static async Task MainAsync(string[] args)
-        {
-            lib.config config = new lib.config()
-            {
-                source = new lib.server() { uri = System.Environment.GetEnvironmentVariable("MONGODB") },
-                destination = new lib.server() { uri = System.Environment.GetEnvironmentVariable("mclonedest") }
+                Source = new lib.Server() { Uri = System.Environment.GetEnvironmentVariable("MONGODB") },
+                Destination = new lib.Server() { Uri = System.Environment.GetEnvironmentVariable("mclonedest") }
             };
             await config.FillAsync();
-            config.source["admin"].include = false;
-            config.source["config"].include = false;
-            config.source["local"].include = false;
-            config.source["Chorus"]["Piste"].force = true;
+            config.Source["Chorus"]["Piste"].Force = true;
+            config.Source["Chorus"]["seq"].Force = true;
             await config.SyncAsync();
             // Console.WriteLine(config.ToJson());
         }
+
+        public static readonly string json = "mclone.json";
+        public static readonly string arg_create = "create";
+        public static readonly string arg_config = "config";
+        public static readonly string arg_populate = "populate";
+        public static readonly string arg_sync = "sync";
+        static async Task MainAsync()
+        {
+            SuperSimpleParser.CommandLineParser clp = SuperSimpleParser.CommandLineParser.Parse(Environment.CommandLine);
+            if (clp.args.Count==0 || clp.GetBool("help"))
+            {
+                Console.WriteLine(@"mclone.exe version 1.0\
+Copy or Sync two MongoDB server.\
+Works in 3 precise context
+A) Destination is empty or use collection drop flag
+B) Collection are never updated, only add or remove records
+C) Collection contains a 'sequence' field, modified on each update
+\
+1. Create an empty json file.
+mclone.exe -create [jsonFile]
+
+2. Edit the json file settings the two serveur uri
+
+3. Execute the populate function to get each server config and check connection string are working.
+mclone.exe -populate [jsonFile]
+
+4. Edit the json file if you want to exclude some databases or collections. Use Include flag.
+Force collection synchro with Force = true.
+Drop collection with Drop = true.
+Set sequence field with SequenceField = 'fieldName'.
+Avoid record deletion with OnlyAdd = true.
+");
+            }
+            else
+            {
+                if (clp.args.ContainsKey(arg_create))
+                {
+                    string create = clp.GetString(arg_create, json);
+                    if (!System.IO.File.Exists(create))
+                        System.IO.File.WriteAllText(create, (new lib.Config()).ToJsonString());
+                    else
+                        Console.Error.WriteLine($"File {create} already exists.");
+                }
+                else
+                {
+                    string jsonFile = clp.GetString(arg_config, json);
+                    if (System.IO.File.Exists(jsonFile))
+                    {
+                        try
+                        {
+                            lib.Config config = lib.Config.Parse(System.IO.File.ReadAllText(jsonFile));
+                            if (clp.GetBool(arg_populate))
+                            {
+                                await config.FillAsync();
+                                System.IO.File.WriteAllText(jsonFile, config.ToJsonString());
+                            }
+                            else if (clp.GetBool(arg_sync))
+                            {
+                                await config.SyncAsync();
+                            }
+                        }
+                        catch(Exception ex)
+                        {
+                            var e = ex;
+                            while (e!=null)
+                            {
+                                Console.Error.WriteLine(e.Message);
+                                e = ex.InnerException;
+                            }
+                        }
+                    }
+                    else
+                        Console.Error.WriteLine($"Can't find config file.");
+                }
+            }
+        }
         static void Main(string[] args)
         {
-            Task.WaitAll(Task.Run(async () => await MainAsync(args)));
+            Task.WaitAll(Task.Run(async () => await MainAsync()));
             Console.ReadLine();
         }
     }
