@@ -31,6 +31,8 @@ namespace mclone.lib
     public class database : mongoObject
     {
         public List<collection> collections { get; set; }
+        public collection this[string name] { get => collections.Find(_ => _.name == name); }
+
         public async Task FillCollectionsAsync(IMongoClient client)
         {
             collections = new List<collection>();
@@ -60,7 +62,7 @@ namespace mclone.lib
                         }
                     }
                     if (srcCollection.verbose && existingIds.Count > 0 && !srcCollection.force)
-                        Console.WriteLine($"Ignore {src.name}.{srcCollection.name} : {existingIds.Count} records");
+                        Console.WriteLine($"Ignore {existingIds.Count} records in {src.name}.{srcCollection.name}");
                     if (srcCollection.force)
                     {
                         while (existingIds.Count > 0)
@@ -82,7 +84,7 @@ namespace mclone.lib
                             foreach (BsonDocument doc in s)
                                 await dstClient.GetDatabase(src.name).GetCollection<BsonDocument>(srcCollection.name).ReplaceOneAsync(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]), doc);
                             if (srcCollection.verbose)
-                                Console.WriteLine($"Repalace {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms {src.name}.{srcCollection.name}");
+                                Console.WriteLine($"Replace {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms {src.name}.{srcCollection.name}");
                         }
                     }
                     while (srcIds.Count > 0)
@@ -118,6 +120,7 @@ namespace mclone.lib
         public List<database> databases { get; set; }
         [BsonExtraElements]
         public BsonDocument indexes { get; set; }
+        public database this[string name] { get => databases.Find(_ => _.name == name); }
         public async Task FillDatabasesAsync()
         {
             var client = new MongoClient(uri);
@@ -148,7 +151,7 @@ namespace mclone.lib
         {
             var srcClient = new MongoClient(source.uri);
             var dstClient = new MongoClient(destination.uri);
-            foreach (database srcDb in source.databases.FindAll(_=>_.include))
+            foreach (database srcDb in source.databases)
             {
                 if (srcDb.include)
                 {
@@ -156,7 +159,7 @@ namespace mclone.lib
                     await database.SyncAsync(srcClient, srcDb, dstClient);
                 }
                 else
-                    Console.WriteLine($"ignore database {srcDb.name}");
+                    Console.WriteLine($"Ignore database {srcDb.name}");
             }
         }
     }
