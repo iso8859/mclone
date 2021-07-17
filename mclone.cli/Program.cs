@@ -28,7 +28,7 @@ public class BestPracticesDemo
             config.SourceServer["Chorus"]["Piste"].Force = true;
             config.SourceServer["Chorus"]["seq"].Force = true;
             await config.SyncAsync();
-            // Console.WriteLine(config.ToJson());
+            // Console.WriteLine(config.ToJsonString());
         }
 
         public static readonly string json = "mclone.json";
