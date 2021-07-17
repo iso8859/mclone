@@ -2,7 +2,7 @@
   "profiles": {
     "mclone.cli": {
       "commandName": "Project",
-      "commandLineArgs": "-sync -config \"R:\\dev\\mclone\\mclone.cli\\bin\\Debug\\net5.0\\mclone.json\""
+      "commandLineArgs": "--render -config \"R:\\dev\\mclone\\mclone.cli\\bin\\Debug\\net5.0\\ovh2atlas.json\""
     }
   }
 }

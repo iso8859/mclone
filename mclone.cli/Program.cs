@@ -1,5 +1,6 @@
 ﻿using MongoDB.Bson;
 using MongoDB.Driver;
+using Spectre.Console;
 using System;
 using System.Threading.Tasks;
 
@@ -26,13 +27,14 @@ namespace mclone
         public static readonly string arg_config = "config";
         public static readonly string arg_populate = "populate";
         public static readonly string arg_sync = "sync";
+        public static readonly string arg_render = "render";
         static async Task MainAsync()
         {
+            Console.WriteLine(@"mclone.exe version 1.1 https://github.com/iso8859/mclone");
             SuperSimpleParser.CommandLineParser clp = SuperSimpleParser.CommandLineParser.Parse(Environment.CommandLine);
             if (clp.args.Count==0 || clp.GetBool("help"))
             {
-                Console.WriteLine(@"mclone.exe version 1.0
-
+                Console.WriteLine(@"
 Copy or Sync two MongoDB server, databases, collections.
 Works in 3 precise context
 A) Destination is empty or use collection drop flag
@@ -45,18 +47,21 @@ mclone.exe -create [-config jsonFile]
 2. Edit the json file settings the two serveur uri
 
 3. Execute the populate function to get each server config and check connection string are working.
-mclone.exe -populate [-config jsonFile]
+mclone.exe -populate [-config jsonFile] [-render]
 
 4. Edit the json file if you want to exclude some databases or collections. Use Include flag.
-Force collection synchro with Force = true.
-Drop collection with Drop = true.
+Force collection synchro with Force = true or ForceAllCollections = true.
 Set sequence field with SequenceField = 'fieldName'.
-Avoid record deletion with OnlyAdd = true.
+Avoid record deletion with OnlyAdd = true or OnlyAddAllCollections = true.
 mclone.exe -sync [-config jsonFile]
+
+To see current config summary
+mclone.exe -render [-config jsonFile]
 ");
             }
             else
             {
+                // --config
                 string jsonFile = clp.GetString(arg_config, json);
                 if (clp.GetBool(arg_create))
                 {
@@ -75,12 +80,19 @@ mclone.exe -sync [-config jsonFile]
                         try
                         {
                             lib.Config config = lib.Config.Parse(System.IO.File.ReadAllText(jsonFile));
+                            // --render
+                            if (clp.GetBool(arg_render))
+                            {
+                                AnsiConsole.Render(config.Render());
+                            }
+                            // --populate
                             if (clp.GetBool(arg_populate))
                             {
                                 await config.FillAsync();
                                 System.IO.File.WriteAllText(jsonFile, config.ToJsonString());
                                 Console.Error.WriteLine($"File {jsonFile} populated.");
                             }
+                            // --sync
                             else if (clp.GetBool(arg_sync))
                             {
                                 await config.SyncAsync();
@@ -105,7 +117,10 @@ mclone.exe -sync [-config jsonFile]
         static void Main(string[] args)
         {
             Task.WaitAll(Task.Run(async () => await MainAsync()));
-            // Console.ReadLine();
+#if DEBUG
+            //Console.ReadLine();
+#endif
+            Console.WriteLine();
         }
     }
 }
