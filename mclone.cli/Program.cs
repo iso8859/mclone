@@ -1,4 +1,5 @@
 ﻿using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using Spectre.Console;
 using System;
@@ -8,6 +9,14 @@ namespace mclone
 {
     class Program
     {
+public class BestPracticesDemo
+{
+    public ObjectId _id { get; set; }
+    [BsonElement("_s")] 
+    public long sequence { get; set; }
+    [BsonExtraElements]
+    public BsonDocument Properties { get; set; }
+}
         static async Task Test()
         {
             lib.Config config = new()
@@ -34,29 +43,36 @@ namespace mclone
             SuperSimpleParser.CommandLineParser clp = SuperSimpleParser.CommandLineParser.Parse(Environment.CommandLine);
             if (clp.args.Count==0 || clp.GetBool("help"))
             {
+                AnsiConsole.Render(new FigletText("mclone").LeftAligned());
                 Console.WriteLine(@"
 Copy or Sync two MongoDB server, databases, collections.
 Works in 3 precise context
-A) Destination is empty or use collection drop flag
-B) Collection are never updated, only add or remove records
-C) Collection contains a 'sequence' field, modified on each update
+A) Destination is empty or use Force flag.
+B) Collection are never updated, only add or remove records.
+C) Collection contains a 'sequence' field, modified on each update.
+D) Copy if you use OnlyAdd flag.
+
+4 steps to create your first synchronisation.
 
 1. Create an empty json file.
-mclone.exe -create [-config jsonFile]
+> mclone.exe -create [-config jsonFile]
 
-2. Edit the json file settings the two serveur uri
+2. Edit the json file and set the two serveur uri
 
-3. Execute the populate function to get each server config and check connection string are working.
-mclone.exe -populate [-config jsonFile] [-render]
+3. Execute the populate function to get source server collection map.
+> mclone.exe -populate [-config jsonFile] [-render]
 
 4. Edit the json file if you want to exclude some databases or collections. Use Include flag.
+No need to edit it if you want all default options = basic synchronisation
 Force collection synchro with Force = true or ForceAllCollections = true.
 Set sequence field with SequenceField = 'fieldName'.
 Avoid record deletion with OnlyAdd = true or OnlyAddAllCollections = true.
-mclone.exe -sync [-config jsonFile]
+> mclone.exe -sync [-config jsonFile]
 
 To see current config summary
-mclone.exe -render [-config jsonFile]
+> mclone.exe -render [-config jsonFile]
+
+More infos on github.
 ");
             }
             else

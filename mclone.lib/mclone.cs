@@ -166,7 +166,7 @@ namespace mclone.lib
                     bool verbose = (srcCollection.Verbose || srcDb.VerboseAllCollections);
 
                     if (verbose)
-                        Console.WriteLine($"{srcDb.Name}.{srcCollection.Name}: Records:({srcIds.Count};{destIds.Count}) Create: {createIds.Count} Force update:{forcedIds.Count} Sequence update:{updateIds.Count} Delete:{deleteIds.Count} Ignore:{ignoreIds}");
+                        Console.WriteLine($"{srcDb.Name}.{srcCollection.Name}: Records:({srcIds.Count};{destIds.Count}) Create:{createIds.Count} Force update:{forcedIds.Count} Sequence update:{updateIds.Count} Delete:{deleteIds.Count} Ignore:{ignoreIds}");
 
                     int batchSize = srcCollection.BatchSize;
                     if (batchSize == 0)
@@ -175,66 +175,102 @@ namespace mclone.lib
                         batchSize = 10;
 
                     DateTime startBatch = DateTime.Now;
-                    // The records we need to refresh
-                    // Mergre force with update
-                    foreach (BsonValue val in forcedIds)
-                        updateIds.Add(val);
-                    if (updateIds.Count > 0)
-                    {
-                        int count = updateIds.Count;
-                        while (updateIds.Count > 0)
-                        {
-                            BsonArray batch = CreateBatch(updateIds, batchSize);
-                            DateTime start = DateTime.Now;
-                            List<BsonDocument> s = await srcClient.GetDatabase(srcDb.Name).GetCollection<BsonDocument>(srcCollection.Name).Find(bsonf.In("_id", batch)).ToListAsync();
-                            if (verbose)
-                                Console.WriteLine($"{srcDb.Name}.{srcCollection.Name}: Read {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms");
-                            start = DateTime.Now;
-                            foreach (BsonDocument doc in s)
-                                await dstClient.GetDatabase(srcDb.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName).ReplaceOneAsync(bsonf.Eq("_id", doc["_id"]), doc);
-                            if (verbose)
-                                Console.WriteLine($"{srcDb.DestinationName}.{srcCollection.DestinationName}: Replaced {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms");
-                        }
-                        if (verbose)
-                            Console.WriteLine($"{srcDb.DestinationName}.{srcCollection.DestinationName}: Replaced {count} records in {(DateTime.Now - startBatch).TotalMilliseconds}ms");
-                    }
 
-                    if (createIds.Count > 0)
-                    {
-                        int count = createIds.Count;
-                        DateTime startBatch0 = DateTime.Now;
-                        // The new records
-                        while (createIds.Count > 0)
+                    await AnsiConsole.Progress()
+                        .AutoRefresh(false) // Turn off auto refresh
+                        .AutoClear(true)   // Do not remove the task list when done
+                        .HideCompleted(true)   // Hide tasks as they are completed
+                        .Columns(new ProgressColumn[]
                         {
-                            BsonArray batch = CreateBatch(createIds, batchSize);
-                            DateTime start = DateTime.Now;
-                            List<BsonDocument> s = await srcClient.GetDatabase(srcDb.Name).GetCollection<BsonDocument>(srcCollection.Name).Find(bsonf.In("_id", batch)).ToListAsync();
-                            if (verbose)
-                                Console.WriteLine($"{srcDb.Name}.{srcCollection.Name}: Read {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms");
-                            start = DateTime.Now;
-                            await dstClient.GetDatabase(srcDb.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName).InsertManyAsync(s);
-                            if (verbose)
-                                Console.WriteLine($"{srcDb.DestinationName}.{srcCollection.DestinationName}: Created {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms");
-                        }
-                        if (verbose)
-                            Console.WriteLine($"{srcDb.DestinationName}.{srcCollection.DestinationName}: Created {count} records in {(DateTime.Now - startBatch0).TotalMilliseconds}ms");
-                    }
-                    if (deleteIds.Count > 0)
-                    {
-                        int count = deleteIds.Count;
-                        DateTime startBatch0 = DateTime.Now;
-                        // The new records
-                        while (deleteIds.Count > 0)
+                            new TaskDescriptionColumn(),    // Task description
+                            new ProgressBarColumn(),        // Progress bar
+                            new PercentageColumn(),         // Percentage
+                            new RemainingTimeColumn(),      // Remaining time
+                            new SpinnerColumn(),            // Spinner
+                        })
+                        .StartAsync(async ctx =>
                         {
-                            BsonArray batch = CreateBatch(deleteIds, batchSize);
-                            await dstClient.GetDatabase(srcDb.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName).DeleteManyAsync(bsonf.In("_id", batch));
-                        }
-                        if (verbose)
-                            Console.WriteLine($"{srcDb.DestinationName}.{srcCollection.DestinationName}: Deleted {count} records in {(DateTime.Now - startBatch0).TotalMilliseconds}ms");
-                    }
+                            // The records we need to refresh
+                            // Mergre force with update
+                            foreach (BsonValue val in forcedIds)
+                                updateIds.Add(val);
+                            if (updateIds.Count > 0)
+                            {
+                                int count = updateIds.Count;
+                                var task1 = ctx.AddTask("[green]Update[/]");
+                                task1.MaxValue = count;
+                                while (updateIds.Count > 0)
+                                {
+                                    BsonArray batch = CreateBatch(updateIds, batchSize);
+                                    DateTime start = DateTime.Now;
+                                    List<BsonDocument> s = await srcClient.GetDatabase(srcDb.Name).GetCollection<BsonDocument>(srcCollection.Name).Find(bsonf.In("_id", batch)).ToListAsync();
+                                    //if (verbose)
+                                    //    Console.WriteLine($"{srcDb.Name}.{srcCollection.Name}: Read {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms");
+                                    start = DateTime.Now;
+                                    foreach (BsonDocument doc in s)
+                                        await dstClient.GetDatabase(srcDb.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName).ReplaceOneAsync(bsonf.Eq("_id", doc["_id"]), doc);
+                                    //if (verbose)
+                                    //    Console.WriteLine($"{srcDb.DestinationName}.{srcCollection.DestinationName}: Replaced {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms");
+                                    task1.Increment(batch.Count);
+                                    ctx.Refresh();
+                                }
+                                if (verbose)
+                                    Console.WriteLine($"{srcDb.DestinationName}.{srcCollection.DestinationName}: Replaced {count} records in {(DateTime.Now - startBatch)}");
+                            }
+
+                            if (createIds.Count > 0)
+                            {
+                                int count = createIds.Count;
+                                var task1 = ctx.AddTask("[green]Create[/]");
+                                task1.MaxValue = count;
+                                DateTime startBatch0 = DateTime.Now;
+                                // The new records
+                                while (createIds.Count > 0)
+                                {
+                                    BsonArray batch = CreateBatch(createIds, batchSize);
+                                    DateTime start = DateTime.Now;
+                                    List<BsonDocument> s = await srcClient.GetDatabase(srcDb.Name).GetCollection<BsonDocument>(srcCollection.Name).Find(bsonf.In("_id", batch)).ToListAsync();
+                                    //if (verbose)
+                                    //    Console.WriteLine($"{srcDb.Name}.{srcCollection.Name}: Read {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms");
+                                    start = DateTime.Now;
+                                    await dstClient.GetDatabase(srcDb.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName).InsertManyAsync(s);
+                                    //if (verbose)
+                                    //    Console.WriteLine($"{srcDb.DestinationName}.{srcCollection.DestinationName}: Created {batch.Count} records in {(DateTime.Now - start).TotalMilliseconds}ms");
+                                    task1.Increment(batch.Count);
+                                    ctx.Refresh();
+                                }
+                                if (verbose)
+                                    Console.WriteLine($"{srcDb.DestinationName}.{srcCollection.DestinationName}: Created {count} records in {(DateTime.Now - startBatch0)}");
+                            }
+
+                            if (deleteIds.Count > 0)
+                            {
+                                int count = deleteIds.Count;
+                                var task1 = ctx.AddTask("[green]Delete[/]");
+                                task1.MaxValue = count;
+                                DateTime startBatch0 = DateTime.Now;
+                                // The new records
+                                while (deleteIds.Count > 0)
+                                {
+                                    BsonArray batch = CreateBatch(deleteIds, batchSize);
+                                    await dstClient.GetDatabase(srcDb.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName).DeleteManyAsync(bsonf.In("_id", batch));
+                                    task1.Increment(batch.Count);
+                                    ctx.Refresh();
+                                }
+                                if (verbose)
+                                    Console.WriteLine($"{srcDb.DestinationName}.{srcCollection.DestinationName}: Deleted {count} records in {(DateTime.Now - startBatch0)}");
+                            }
+                        });
 
                     if (verbose)
-                        Console.WriteLine($"{srcDb.DestinationName}.{srcCollection.DestinationName}: Total operation time {(DateTime.Now - startBatch)}");
+                        Console.WriteLine($"\r\n{srcDb.DestinationName}.{srcCollection.DestinationName}: Total operation time {(DateTime.Now - startBatch)}");
+
+                    srcIds = null;
+                    destIds = null;
+                    createIds = null;
+                    forcedIds = null;
+                    updateIds = null;
+                    deleteIds = null;
                 }
                 else if (srcCollection.Verbose || srcDb.VerboseAllCollections)
                     Console.WriteLine($"{srcDb.Name}.{srcCollection.Name}: Ignore");
@@ -303,6 +339,7 @@ namespace mclone.lib
         // Only add missing records
         public async Task SyncAsync()
         {
+            var start = DateTime.Now;
             var srcClient = new MongoClient(SourceUri);
             var dstClient = new MongoClient(DestinationUri);
             foreach (Database srcDb in SourceServer.Databases)
@@ -315,6 +352,8 @@ namespace mclone.lib
                 else
                     Console.WriteLine($"----\r\n{srcDb.Name}");
             }
+            Console.WriteLine("=====");
+            Console.WriteLine($"Total time:{DateTime.Now - start}");
         }
 
         public Tree Render()
