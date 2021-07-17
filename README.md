@@ -1,6 +1,8 @@
 # mclone
 MongoDB clone CLI, inspired from rclone.
 
+Minimum configuration, big granularity. No temporary file.
+
 
 
 ```
