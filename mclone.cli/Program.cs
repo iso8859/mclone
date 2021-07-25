@@ -45,9 +45,9 @@ public class BestPracticesDemo
             {
                 AnsiConsole.Render(new FigletText("mclone").LeftAligned());
                 Console.WriteLine(@"
-Copy or Sync two MongoDB server, databases, collections.
-Works in 3 precise context
-A) Destination is empty or use Force flag.
+Copy or Sync two MongoDB server, databases, collections, indexes.
+Works in 4 precise context
+A) Destination is empty or use Force or Drop flag.
 B) Collection are never updated, only add or remove records.
 C) Collection contains a 'sequence' field, modified on each update.
 D) Copy if you use OnlyAdd flag.
@@ -132,6 +132,20 @@ More infos on github.
         }
         static void Main(string[] args)
         {
+            //var client = new MongoDB.Driver.MongoClient();
+            //// foreach (var db in client.ListDatabaseNames().ToList())
+            //{
+            //    var db = "mq";
+            //    foreach (var ci in client.GetDatabase(db).ListCollections().ToList())
+            //    {
+            //        Console.WriteLine($"{db}:{ci.ToJson()}");
+            //    }
+            //    foreach (var collection in client.GetDatabase(db).ListCollectionNames().ToList())
+            //    {
+            //        var index = client.GetDatabase(db).GetCollection<BsonDocument>(collection).Indexes.List().ToList();
+            //        Console.WriteLine($"{db}:{collection}:{index.ToJson()}");
+            //    }
+            //}
             Task.WaitAll(Task.Run(async () => await MainAsync()));
 #if DEBUG
             //Console.ReadLine();

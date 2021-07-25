@@ -24,6 +24,10 @@ namespace mclone.lib
     }
     public class Collection : MongoObject
     {
+        // Do we also synchorine index ?
+        public bool IncludeIndex { get; set; } = true;
+        // Do not remove destination index that doesn't exist in source
+        public bool OnlyAddIndex { get; set; } = false;
         // You can change destination name
         public string DestinationName { get; set; }
         // Name of the sequence field, needed to synchronize updated records
@@ -33,6 +37,7 @@ namespace mclone.lib
         // Can only add or update record, don't delete records
         public bool OnlyAdd { get; set; } = false;
         // If true will drop destination collection.
+        public bool Drop { get; set; } = false;
         public bool Verbose { get; set; } = true;
         public bool Stats { get; set; } = false;
         public int BatchSize { get; set; } = 0;
@@ -53,6 +58,80 @@ namespace mclone.lib
                     node.AddNode("[lightsteelblue]Force[/]");
                 if (OnlyAdd)
                     node.AddNode("[lightsteelblue]OnlyAdd[/]");
+            }
+        }
+
+        public async Task SyncAsync(IMongoDatabase src, IMongoDatabase dest)
+        {
+            if (Include)
+            {
+                if (Drop)
+                    dest.DropCollection(Name);
+
+                var srcCollectionInfo = (await src.ListCollections().ToListAsync()).Find(_ => _["name"].AsString == Name);
+                if (srcCollectionInfo != null)
+                {
+                    // Compare with destination
+                    var destCollectionInfo = (await dest.ListCollections().ToListAsync()).Find(_ => _["name"].AsString == DestinationName);
+                    if (destCollectionInfo == null)
+                    {
+                        // Destination doesn't exists, create it
+                        // { "name" : "ipc_users", "type" : "collection", "options" : { "capped" : true, "size" : 1048576 }, "info" : { "readOnly" : false }, "idIndex" : { "v" : 2, "key" : { "_id" : 1 }, "name" : "_id_", "ns" : "mq.xxx" } }
+
+                        if (srcCollectionInfo.Contains("options") && srcCollectionInfo["options"].IsBsonDocument)
+                        {
+                            BsonDocument srcOptions = srcCollectionInfo["options"].AsBsonDocument;
+                            srcOptions.InsertAt(0, new BsonElement("create", DestinationName));
+                            dest.RunCommand<BsonDocument>(srcOptions);
+                        }
+                    }
+                    if (IncludeIndex)
+                    {
+                        // ipc_users:[{ "v" : 2, "key" : { "_id" : 1 }, "name" : "_id_", "ns" : "mq.ipc_users" }, { "v" : 2, "key" : { "action" : 1 }, "name" : "action_1", "ns" : "mq.ipc_users" }]
+                        var srcIndexes = src.GetCollection<BsonDocument>(Name).Indexes.List().ToList();
+                        var destIndexes = dest.GetCollection<BsonDocument>(DestinationName).Indexes.List().ToList();
+                        BsonArray buildIndexes = new BsonArray();
+                        List<string> names = new List<string>();
+                        foreach (BsonDocument index in srcIndexes)
+                        {
+                            string name = index["name"].AsString;
+                            names.Add(name);
+                            // Does index exist in destination and is the same ?
+                            BsonDocument d = destIndexes.Find(_ => _["name"] == name);
+                            bool create = d == null;
+                            if (!create && !d.SameAs(index, "ns"))
+                            {
+                                // Drop destination index and recreate it
+                                dest.GetCollection<BsonDocument>(DestinationName).Indexes.DropOne(name);
+                                create = true;
+                            }
+                            if (create)
+                            {
+                                index.Remove("ns");
+                                buildIndexes.Add(index);
+                            }
+                        }
+                        // Drop destination index that should not exists
+                        if (!OnlyAddIndex)
+                        {
+                            foreach (BsonDocument index in destIndexes)
+                            {
+                                string name = index["name"].AsString;
+                                if (!names.Contains(name))
+                                    dest.GetCollection<BsonDocument>(DestinationName).Indexes.DropOne(name);
+                            }
+                        }
+                        if (buildIndexes.Count > 0)
+                        {
+                            BsonDocument idxCommand = new BsonDocument()
+                            {
+                                {"createIndexes", DestinationName },
+                                {"indexes", buildIndexes }
+                            };
+                            dest.RunCommand<BsonDocument>(idxCommand);
+                        }
+                    }
+                }
             }
         }
     }
@@ -127,6 +206,8 @@ namespace mclone.lib
 
                 if (srcCollection.Include)
                 {
+                    await srcCollection.SyncAsync(srcClient.GetDatabase(srcDb.Name), dstClient.GetDatabase(srcDb.DestinationName));
+
                     var bsonf = Builders<BsonDocument>.Filter;
                     bool sequence = !string.IsNullOrEmpty(srcCollection.SequenceField);
 
@@ -191,7 +272,6 @@ namespace mclone.lib
                         .StartAsync(async ctx =>
                         {
                             // The records we need to refresh
-                            // Mergre force with update
                             foreach (BsonValue val in forcedIds)
                                 updateIds.Add(val);
                             if (updateIds.Count > 0)
@@ -339,21 +419,28 @@ namespace mclone.lib
         // Only add missing records
         public async Task SyncAsync()
         {
-            var start = DateTime.Now;
-            var srcClient = new MongoClient(SourceUri);
-            var dstClient = new MongoClient(DestinationUri);
-            foreach (Database srcDb in SourceServer.Databases)
+            if (Include)
             {
-                if (srcDb.Include)
+                if (!string.IsNullOrEmpty(Name))
+                    Console.WriteLine($"Start {Name} synchro.");
+                var start = DateTime.Now;
+                var srcClient = new MongoClient(SourceUri);
+                var dstClient = new MongoClient(DestinationUri);
+                foreach (Database srcDb in SourceServer.Databases)
                 {
-                    // Get all ids in destination
-                    await Database.SyncAsync(srcClient, srcDb, dstClient);
+                    if (srcDb.Include)
+                    {
+                        // Get all ids in destination
+                        await Database.SyncAsync(srcClient, srcDb, dstClient);
+                    }
+                    else
+                        Console.WriteLine($"----\r\n{srcDb.Name}");
                 }
-                else
-                    Console.WriteLine($"----\r\n{srcDb.Name}");
+                Console.WriteLine("=====");
+                Console.WriteLine($"Total time:{DateTime.Now - start}");
             }
-            Console.WriteLine("=====");
-            Console.WriteLine($"Total time:{DateTime.Now - start}");
+            else if (!string.IsNullOrEmpty(Name))
+                Console.WriteLine($"Ignore {Name} synchro.");
         }
 
         public Tree Render()

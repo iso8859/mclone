@@ -14,9 +14,9 @@ mclone.exe version 1.1 https://github.com/iso8859/mclone
  |_| |_| |_|  \___| |_|  \___/  |_| |_|  \___|
 
 
-Copy or Sync two MongoDB server, databases, collections.
-Works in 3 precise context
-A) Destination is empty or use Force flag.
+Copy or Sync two MongoDB server, databases, collections, indexes.
+Works in 4 precise context
+A) Destination is empty or use Force or Drop flag.
 B) Collection are never updated, only add or remove records.
 C) Collection contains a 'sequence' field, modified on each update.
 D) Copy if you use OnlyAdd flag.
