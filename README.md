@@ -6,7 +6,7 @@ Minimum configuration, big granularity. No temporary file.
 ![alt text](mclone_media/mclone.gif "Demo")
 
 ```
-mclone.exe version 1.1 https://github.com/iso8859/mclone
+mclone.exe version 1.2 https://github.com/iso8859/mclone
                      _
   _ __ ___     ___  | |   ___    _ __     ___
  | '_ ` _ \   / __| | |  / _ \  | '_ \   / _ \
