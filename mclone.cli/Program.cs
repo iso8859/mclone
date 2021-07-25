@@ -9,14 +9,14 @@ namespace mclone
 {
     class Program
     {
-public class BestPracticesDemo
-{
-    public ObjectId _id { get; set; }
-    [BsonElement("_s")] 
-    public long sequence { get; set; }
-    [BsonExtraElements]
-    public BsonDocument Properties { get; set; }
-}
+        public class BestPracticesDemo
+        {
+            public ObjectId _id { get; set; }
+            [BsonElement("_s")]
+            public long sequence { get; set; }
+            [BsonExtraElements]
+            public BsonDocument Properties { get; set; }
+        }
         static async Task Test()
         {
             lib.Config config = new()
@@ -41,7 +41,7 @@ public class BestPracticesDemo
         {
             Console.WriteLine(@"mclone.exe version 1.2 https://github.com/iso8859/mclone");
             SuperSimpleParser.CommandLineParser clp = SuperSimpleParser.CommandLineParser.Parse(Environment.CommandLine);
-            if (clp.args.Count==0 || clp.GetBool("help"))
+            if (clp.args.Count == 0 || clp.GetBool("help"))
             {
                 AnsiConsole.Render(new FigletText("mclone").LeftAligned());
                 Console.WriteLine(@"
@@ -114,10 +114,10 @@ More infos on github.
                                 await config.SyncAsync();
                             }
                         }
-                        catch(Exception ex)
+                        catch (Exception ex)
                         {
                             var e = ex;
-                            while (e!=null)
+                            while (e != null)
                             {
                                 Console.Error.WriteLine(e.Message);
                                 Console.Error.WriteLine(e.StackTrace);
