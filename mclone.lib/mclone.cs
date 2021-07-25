@@ -66,7 +66,7 @@ namespace mclone.lib
             if (Include)
             {
                 if (Drop)
-                    dest.DropCollection(Name);
+                    dest.DropCollection(DestinationName);
 
                 var srcCollectionInfo = (await src.ListCollections().ToListAsync()).Find(_ => _["name"].AsString == Name);
                 if (srcCollectionInfo != null)
