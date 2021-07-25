@@ -3,7 +3,7 @@ MongoDB clone CLI, inspired from rclone.
 
 Minimum configuration, big granularity. No temporary file.
 
-[![Latest Stable Version](https://img.m4f.eu/mclone/mclone.gif)](https://img.m4f.eu/mclone/mclone.gif)
+![alt text](mclone_media/mclone.gif "Demo")
 
 ```
 mclone.exe version 1.2 https://github.com/iso8859/mclone
