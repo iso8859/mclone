@@ -39,7 +39,7 @@ namespace mclone
         public static readonly string arg_render = "render";
         static async Task MainAsync()
         {
-            Console.WriteLine(@"mclone.exe version 1.3 2011111201 https://github.com/iso8859/mclone");
+            Console.WriteLine(@"mclone.exe version 1.3 2011111202 https://github.com/iso8859/mclone");
             SuperSimpleParser.CommandLineParser clp = SuperSimpleParser.CommandLineParser.Parse(Environment.CommandLine);
             if (clp.args.Count == 0 || clp.GetBool("help"))
             {
