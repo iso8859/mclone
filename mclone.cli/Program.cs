@@ -39,11 +39,11 @@ namespace mclone
         public static readonly string arg_render = "render";
         static async Task MainAsync()
         {
-            Console.WriteLine(@"mclone.exe version 1.2 https://github.com/iso8859/mclone");
+            Console.WriteLine(@"mclone.exe version 1.3 https://github.com/iso8859/mclone");
             SuperSimpleParser.CommandLineParser clp = SuperSimpleParser.CommandLineParser.Parse(Environment.CommandLine);
             if (clp.args.Count == 0 || clp.GetBool("help"))
             {
-                AnsiConsole.Render(new FigletText("mclone").LeftAligned());
+                AnsiConsole.Write(new FigletText("mclone").LeftAligned());
                 Console.WriteLine(@"
 Copy or Sync two MongoDB server, databases, collections, indexes.
 Works in 4 precise context
@@ -58,6 +58,7 @@ D) Copy if you use OnlyAdd flag.
 > mclone.exe -create [-config jsonFile]
 
 2. Edit the json file and set the two serveur uri
+> notepad.exe mclone.json
 
 3. Execute the populate function to get source server collection map.
 > mclone.exe -populate [-config jsonFile] [-render]
@@ -99,7 +100,7 @@ More infos on github.
                             // --render
                             if (clp.GetBool(arg_render))
                             {
-                                AnsiConsole.Render(config.Render());
+                                AnsiConsole.Write(config.Render());
                             }
                             // --populate
                             if (clp.GetBool(arg_populate))
