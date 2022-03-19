@@ -3,6 +3,7 @@ using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using Spectre.Console;
 using System;
+using System.IO;
 using System.Threading.Tasks;
 
 namespace mclone
@@ -37,12 +38,16 @@ namespace mclone
         public static readonly string arg_populate = "populate";
         public static readonly string arg_sync = "sync";
         public static readonly string arg_render = "render";
+        public static readonly string arg_batchdump = "batchdump";
+        public static readonly string arg_batchrestore = "batchrestore";
+
+        // https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-aspnetcore-6.0.3-windows-hosting-bundle-installer
         static async Task MainAsync()
         {
-            Console.WriteLine(@"mclone.exe version 1.3 2011111202 https://github.com/iso8859/mclone");
             SuperSimpleParser.CommandLineParser clp = SuperSimpleParser.CommandLineParser.Parse(Environment.CommandLine);
             if (clp.args.Count == 0 || clp.GetBool("help"))
             {
+                Console.WriteLine(@"mclone.exe version 1.4 2022031901 https://github.com/iso8859/mclone");
                 AnsiConsole.Write(new FigletText("mclone").LeftAligned());
                 Console.WriteLine(@"
 Copy or Sync two MongoDB server, databases, collections, indexes.
@@ -73,13 +78,20 @@ Avoid record deletion with OnlyAdd = true or OnlyAddAllCollections = true.
 To see current config summary
 > mclone.exe -render [-config jsonFile]
 
+To generate .BAT file with db by db mongodump
+> mclone.exe -batchdump [-config jsonFile] > dump.bat
+
+To generate .BAT file with db by db mongorestore
+> mclone.exe -batchrestore [-config jsonFile] > restore.bat
+
 More infos on github.
 ");
             }
             else
             {
                 // --config
-                string jsonFile = clp.GetString(arg_config, json);
+                string jsonFile = Path.Combine(AppContext.BaseDirectory, json);
+                jsonFile = clp.GetString(arg_config, jsonFile);
                 if (clp.GetBool(arg_create))
                 {
                     if (!System.IO.File.Exists(jsonFile))
@@ -113,6 +125,14 @@ More infos on github.
                             else if (clp.GetBool(arg_sync))
                             {
                                 await config.SyncAsync();
+                            }
+                            else if (clp.GetBool(arg_batchdump))
+                            {
+                                config.BatchDump();
+                            }
+                            else if (clp.GetBool(arg_batchrestore))
+                            {
+                                config.BatchRestore();
                             }
                         }
                         catch (Exception ex)

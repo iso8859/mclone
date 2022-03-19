@@ -2,7 +2,7 @@
   "profiles": {
     "mclone.cli": {
       "commandName": "Project",
-      "commandLineArgs": "--sync --config \"R:\\dev\\GithubPublic\\mclone\\mclone.cli\\bin\\Debug\\net5.0\\mclone.json\""
+      "commandLineArgs": "--batchdump"
     }
   }
 }

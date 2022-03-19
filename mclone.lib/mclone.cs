@@ -48,7 +48,7 @@ namespace mclone.lib
             {
                 TreeNode node = null;
                 if (Name != DestinationName)
-                    node = root.AddNode("[green4]"+Name + "[/]=>[green3]" + DestinationName + "[/]");
+                    node = root.AddNode("[green4]" + Name + "[/]=>[green3]" + DestinationName + "[/]");
                 else
                     node = root.AddNode("[green4]" + Name + "[/]");
 
@@ -102,7 +102,14 @@ namespace mclone.lib
                             if (!create && !d.SameAs(index, "ns"))
                             {
                                 // Drop destination index and recreate it
-                                dest.GetCollection<BsonDocument>(DestinationName).Indexes.DropOne(name);
+                                try
+                                {
+                                    dest.GetCollection<BsonDocument>(DestinationName).Indexes.DropOne(name);
+                                }
+                                catch
+                                {
+
+                                }
                                 create = true;
                             }
                             if (create)
@@ -134,6 +141,22 @@ namespace mclone.lib
                 }
             }
         }
+
+        public void BatchDump(string v, string path, int idx)
+        {
+            if (Include)
+            {
+                Console.WriteLine(v + $" --collection={Name} --archive=%destination%{path}.{Name}{idx}.archive");
+            }
+        }
+
+        internal void BatchRestore(string v, string path, int idx)
+        {
+            if (Include)
+            {
+                Console.WriteLine(v + $" --archive=%source%{path}.{Name}{idx}.archive");
+            }
+        }
     }
 
     public class Database : MongoObject
@@ -159,25 +182,63 @@ namespace mclone.lib
             }
         }
 
-        static async Task<Dictionary<BsonValue, BsonValue>> GetIdsAsync(IMongoCollection<BsonDocument> c, Collection settings)
+        static async Task<Dictionary<BsonValue, BsonValue>> GetIdsAsync(IMongoCollection<BsonDocument> c, Collection settings, string cid)
         {
             bool sequence = !string.IsNullOrEmpty(settings.SequenceField);
             Dictionary<BsonValue, BsonValue> result = new();
             var bsonp = Builders<BsonDocument>.Projection;
             var projection = bsonp.Include("_id");
+            long count = await c.CountDocumentsAsync(_ => true);
 
-            if (sequence)
-            {
-                projection = projection.Include(settings.SequenceField);
-                foreach (BsonDocument doc in await c.Find(_ => true).Project(projection).ToListAsync())
-                    result[doc["_id"]] = doc[settings.SequenceField];
-            }
-            else
-            {
-                foreach (BsonDocument doc in await c.Find(_ => true).Project(projection).ToListAsync())
-                    result[doc["_id"]] = 0;
-            }
+            await AnsiConsole.Progress()
+                        .AutoRefresh(false) // Turn off auto refresh
+                        .AutoClear(true)   // Do not remove the task list when done
+                        .HideCompleted(true)   // Hide tasks as they are completed
+                        .Columns(new ProgressColumn[]
+                        {
+                            new TaskDescriptionColumn(),    // Task description
+                            new ProgressBarColumn(),        // Progress bar
+                            new PercentageColumn(),         // Percentage
+                            new RemainingTimeColumn(),      // Remaining time
+                            new SpinnerColumn(),            // Spinner
+                        })
+                        .StartAsync(async ctx =>
+                        {
 
+                            var task1 = ctx.AddTask($"[green]{cid} read indexes[/]");
+                            task1.MaxValue = count;
+                            if (sequence)
+                            {
+                                projection = projection.Include(settings.SequenceField);
+                                using (var cursor = await c.FindAsync(_ => true, new FindOptions<BsonDocument, BsonDocument>() { Projection = projection }))
+                                {
+                                    while (await cursor.MoveNextAsync())
+                                    {
+                                        foreach (BsonDocument doc in cursor.Current)
+                                        {
+                                            result[doc["_id"]] = doc[settings.SequenceField];
+                                            task1.Increment(1);
+                                        }
+                                        ctx.Refresh();
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                using (var cursor = await c.FindAsync(_ => true, new FindOptions<BsonDocument, BsonDocument>() { Projection = projection }))
+                                {
+                                    while (await cursor.MoveNextAsync())
+                                    {
+                                        foreach (BsonDocument doc in cursor.Current)
+                                        {
+                                            result[doc["_id"]] = 0;
+                                            task1.Increment(1);
+                                        }
+                                        ctx.Refresh();
+                                    }
+                                }
+                            }
+                        });
             return result;
         }
 
@@ -211,8 +272,8 @@ namespace mclone.lib
                     var bsonf = Builders<BsonDocument>.Filter;
                     bool sequence = !string.IsNullOrEmpty(srcCollection.SequenceField);
 
-                    Dictionary<BsonValue, BsonValue> srcIds = await GetIdsAsync(srcClient.GetDatabase(srcDb.Name).GetCollection<BsonDocument>(srcCollection.Name), srcCollection);
-                    Dictionary<BsonValue, BsonValue> destIds = await GetIdsAsync(dstClient.GetDatabase(srcDb.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName), srcCollection);
+                    Dictionary<BsonValue, BsonValue> srcIds = await GetIdsAsync(srcClient.GetDatabase(srcDb.Name).GetCollection<BsonDocument>(srcCollection.Name), srcCollection, "source " + srcCollection.Name);
+                    Dictionary<BsonValue, BsonValue> destIds = await GetIdsAsync(dstClient.GetDatabase(srcDb.DestinationName).GetCollection<BsonDocument>(srcCollection.DestinationName), srcCollection, "destination " + srcCollection.DestinationName);
 
                     HashSet<BsonValue> createIds = new();
                     HashSet<BsonValue> forcedIds = new();
@@ -366,10 +427,36 @@ namespace mclone.lib
                     node = root.AddNode("[dodgerblue2]" + Name + "[/]=>[dodgerblue1]" + DestinationName + "[/]");
                 else
                     node = root.AddNode("[dodgerblue2]" + Name + "[/]");
-                if (Collections!=null)
+                if (Collections != null)
                 {
                     foreach (var collection in Collections)
                         collection.Render(node);
+                }
+            }
+        }
+
+        public void BatchDump(string b, int idx)
+        {
+            if (Include)
+            {
+                int i = 0;
+                foreach (var collection in Collections)
+                {
+                    collection.BatchDump(b + " --db=" + Name, Name + idx, i);
+                    i++;
+                }
+            }
+        }
+
+        internal void BatchRestore(string b, int idx)
+        {
+            if (Include)
+            {
+                int i = 0;
+                foreach (var collection in Collections)
+                {
+                    collection.BatchRestore(b + "", Name + idx, i);
+                    i++;
                 }
             }
         }
@@ -393,7 +480,7 @@ namespace mclone.lib
 
         public void Render(TreeNode root)
         {
-            if (Databases!=null)
+            if (Databases != null)
             {
                 foreach (var db in Databases)
                     db.Render(root);
@@ -408,9 +495,11 @@ namespace mclone.lib
         public Server SourceServer { get; set; } = new() { Name = "source server" };
         public string ToJsonString() => this.ToJson(new() { Indent = true });
         public static Config Parse(string jsonString) => MongoDB.Bson.Serialization.BsonSerializer.Deserialize<Config>(jsonString);
+        public string ExpandSourceUri { get => Environment.ExpandEnvironmentVariables(SourceUri); }
+        public string ExpandDestinationUri { get => Environment.ExpandEnvironmentVariables(DestinationUri); }
         public async Task FillAsync()
         {
-            await SourceServer.FillDatabasesAsync(SourceUri);
+            await SourceServer.FillDatabasesAsync(ExpandSourceUri);
             if (SourceServer["admin"] != null) SourceServer["admin"].Include = false;
             if (SourceServer["config"] != null) SourceServer["config"].Include = false;
             if (SourceServer["local"] != null) SourceServer["local"].Include = false;
@@ -424,8 +513,8 @@ namespace mclone.lib
                 if (!string.IsNullOrEmpty(Name))
                     Console.WriteLine($"Start {Name} synchro.");
                 var start = DateTime.Now;
-                var srcClient = new MongoClient(SourceUri);
-                var dstClient = new MongoClient(DestinationUri);
+                var srcClient = new MongoClient(ExpandSourceUri);
+                var dstClient = new MongoClient(ExpandDestinationUri);
                 foreach (Database srcDb in SourceServer.Databases)
                 {
                     if (srcDb.Include)
@@ -446,10 +535,57 @@ namespace mclone.lib
         public Tree Render()
         {
             Tree root = new Tree("Config");
-            TreeNode server = root.AddNode("[red]" + SourceUri + "[/]");
+            TreeNode server = root.AddNode("[red]" + ExpandSourceUri + "[/]");
             if (SourceServer != null)
                 SourceServer.Render(server);
             return root;
+        }
+
+        public void BatchDump()
+        {
+            if (Include)
+            {
+                MongoUrl url = MongoUrl.Create(ExpandSourceUri);
+                Console.Write($"set cnx=-u {url.Username} -p {url.Password} --host {url.Server}");
+                if (!string.IsNullOrEmpty(url.AuthenticationSource))
+                    Console.Write($" --authenticationDatabase {url.AuthenticationSource}");
+                Console.WriteLine();
+                Console.WriteLine("set mongodump=mongodump.exe");
+                Console.WriteLine("set destination=." + System.IO.Path.DirectorySeparatorChar);
+                Console.WriteLine("set dump=%mongodump% %cnx% --gzip /j 1");
+                int i = 0;
+                foreach (Database srcDb in SourceServer.Databases)
+                {
+                    if (srcDb.Include)
+                    {
+                        // Get all ids in destination
+                        srcDb.BatchDump("%dump%", i);
+                    }
+                    i++;
+                }
+            }
+        }
+
+        public void BatchRestore()
+        {
+            MongoUrl url = MongoUrl.Create(ExpandDestinationUri);
+            Console.Write($"set cnx=-u {url.Username} -p {url.Password} --host {url.Server}");
+            if (!string.IsNullOrEmpty(url.AuthenticationSource))
+                Console.Write($" --authenticationDatabase {url.AuthenticationSource}");
+            Console.WriteLine();
+            Console.WriteLine("set mongorestore=mongorestore.exe");
+            Console.WriteLine("set source=." + System.IO.Path.DirectorySeparatorChar);
+            Console.WriteLine("set restore=%mongorestore% %cnx% --gzip /j 1");
+            int i = 0;
+            foreach (Database srcDb in SourceServer.Databases)
+            {
+                if (srcDb.Include)
+                {
+                    // Get all ids in destination
+                    srcDb.BatchRestore("%restore%", i);
+                }
+                i++;
+            }
         }
     }
 }
