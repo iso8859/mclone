@@ -546,6 +546,7 @@ namespace mclone.lib
             if (Include)
             {
                 MongoUrl url = MongoUrl.Create(ExpandSourceUri);
+                Console.WriteLine("rem set cnx=-u user -p password --host 127.0.0.1:27002 --authenticationDatabase admin");
                 Console.Write($"set cnx=-u {url.Username} -p {url.Password} --host {url.Server}");
                 if (!string.IsNullOrEmpty(url.AuthenticationSource))
                     Console.Write($" --authenticationDatabase {url.AuthenticationSource}");
@@ -569,6 +570,7 @@ namespace mclone.lib
         public void BatchRestore()
         {
             MongoUrl url = MongoUrl.Create(ExpandDestinationUri);
+            Console.WriteLine("rem set cnx=-u user -p password --host 127.0.0.1:27002 --authenticationDatabase admin");
             Console.Write($"set cnx=-u {url.Username} -p {url.Password} --host {url.Server}");
             if (!string.IsNullOrEmpty(url.AuthenticationSource))
                 Console.Write($" --authenticationDatabase {url.AuthenticationSource}");
