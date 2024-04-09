@@ -260,6 +260,8 @@ namespace mclone.lib
 
         static public async Task SyncAsync(IMongoClient srcClient, Database srcDb, IMongoClient dstClient)
         {
+            if (srcDb.Collections == null)
+                await srcDb.FillCollectionsAsync(srcClient);
             foreach (Collection srcCollection in srcDb.Collections)
             {
                 if (srcCollection.Verbose || srcDb.VerboseAllCollections)
