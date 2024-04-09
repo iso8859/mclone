@@ -455,7 +455,7 @@ namespace mclone.lib
                 int i = 0;
                 foreach (var collection in Collections)
                 {
-                    collection.BatchRestore(b + "", Name + idx, i);
+                    collection.BatchRestore(b + " /collection:" + collection.DestinationName, Name + idx, i);
                     i++;
                 }
             }
@@ -584,7 +584,7 @@ namespace mclone.lib
                 if (srcDb.Include)
                 {
                     // Get all ids in destination
-                    srcDb.BatchRestore("%restore%", i);
+                    srcDb.BatchRestore("%restore% /db:" + srcDb.DestinationName, i);
                 }
                 i++;
             }
